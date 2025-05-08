@@ -10,6 +10,26 @@
       content="A LiaScript module, don't forget to specify course"
     />
     <meta name="show-in" content="*" />
+    <meta 
+      name="module-config" 
+      content="{
+        'config': {
+          'classroom': {
+            'type': boolean,
+            'hint': 'Disable or enable classroom synchronization'
+          },
+          'course': {
+            'type': string,
+            'hint': 'Raw LiaScript URL of the course'
+          },
+          'content': {
+            'type': text-area,
+            'hint': 'Define the course content manually'
+          },
+        },
+      }" 
+    />
+
     <title>LiaScript</title>
 
     <script src="https://edrys-labs.github.io/module/edrys.js"></script>
