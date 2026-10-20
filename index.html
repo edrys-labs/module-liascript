@@ -81,29 +81,36 @@
       x-data="{ edrys: undefined, url: undefined }"
       x-init="Edrys.onReady(() => { 
         edrys = {...Edrys};
-        
-        let uri = '';
-        let classroom = edrys.module.config.classroom && edrys.liveUser.room !== 'Lobby';
 
-        if (edrys.module.config.course) {
+        // missing (imported class) or unparsed config: use the defaults
+        const config = (edrys.module.config && typeof edrys.module.config === 'object') ? edrys.module.config : {};
+
+        // btoa() only takes Latin-1, LiaScript decodes the base64 as UTF-8
+        const toBase64 = (text) => btoa(Array.from(new TextEncoder().encode(text), (byte) => String.fromCharCode(byte)).join(''));
+
+        let uri = '';
+        let classroom = config.classroom && edrys.liveUser.room !== 'Lobby';
+
+        if (config.course) {
           console.log('loading course from URL');
-          uri = edrys.module.config.course;
+          uri = config.course;
         } else {
           let content;
-          if (edrys.module.config.content) {
+          if (config.content) {
             console.log('loading content from configuration');
-            content = edrys.module.config.content;
+            content = config.content;
           } else {
             console.warn('no content defined');
             content = '# Warning no content defined\n\nSee the documentation for more information.\n\nhttps://github.com/edrys-labs/module-liascript';
             classroom = false;
           }
-          uri = `data:text/plain;base64,${btoa(content)}`;
+          uri = `data:text/plain;base64,${toBase64(content)}`;
         }
 
         if (classroom) {
           console.log('loading course in classroom mode');
-          uri = btoa(JSON.stringify({'backend':'edrys','course':uri,'room':Edrys.class_id+'/'+Edrys.liveUser.room}));
+          // LiaScript requires the classroom mode: 0 Shared, 1 Summary, 2 Details
+          uri = toBase64(JSON.stringify({'backend':'edrys','course':uri,'room':Edrys.class_id+'/'+Edrys.liveUser.room,'mode':0}));
         }
 
         url = `https://liascript.github.io/course/?${uri}`;
