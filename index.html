@@ -25,7 +25,7 @@
           },
           'classroom': {
             'type': 'boolean',
-            'hint': 'Classroom mode: share quiz and survey results and a chat between the users of a room (not in the Lobby); each user joins with connect in the LiaScript classroom dialog',
+            'hint': 'Classroom mode: share quiz and survey results and a chat between the users of a room (the Lobby too); each user joins with connect in the LiaScript classroom dialog',
           },
           'player': {
             'type': 'text',
@@ -78,7 +78,7 @@
       }
     </style>
 
-    <script src="http://localhost:6999/module/edrys.js"></script>
+    <script src="https://edrys-labs.github.io/module/edrys.js"></script>
   </head>
 
   <body>
@@ -106,7 +106,7 @@
       /** The player's query (a course URL, or inline content), wrapped for classroom mode. */
       function courseQuery(config) {
         const course = config.course || `data:text/plain;base64,${toBase64(config.content)}`
-        const classroom = config.classroom === true && Edrys.liveUser.room !== 'Lobby'
+        const classroom = config.classroom === true
 
         if (!classroom) return { query: course, classroom }
 
