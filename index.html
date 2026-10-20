@@ -33,97 +33,6 @@
     <title>LiaScript</title>
 
     <script src="https://edrys-labs.github.io/module/edrys.js"></script>
-    <script src="https://edrys-labs.github.io/module/vendor/alpine.min.js"></script>
-
-    <script>
-      function init(iframe) {
-        Edrys.onMessage(({ from, subject, body }) => {
-          if (Edrys.username !== from) {
-            iframe.contentWindow.postMessage(
-              {
-                subject: subject,
-                body: body,
-              },
-              '*'
-            )
-          }
-        })
-
-        window.addEventListener('message', function (e) {
-          // Get the sent data
-          const msg = e.data
-
-          switch (msg.subject) {
-            case 'init':
-              iframe.contentWindow.postMessage(
-                {
-                  subject: msg.subject,
-                  body: true,
-                },
-                '*'
-              )
-              break
-
-            default:
-              // this is required in order to transmit only messages
-              // from LiaScript otherwise it will loop forever
-              if (!(msg.event && msg.event == 'message'))
-                Edrys.sendMessage(msg.subject, msg.body)
-          }
-        })
-      }
-    </script>
-  </head>
-
-  <body>
-    <template
-      x-if="!!edrys"
-      x-data="{ edrys: undefined, url: undefined }"
-      x-init="Edrys.onReady(() => { 
-        edrys = {...Edrys};
-
-        // missing (imported class) or unparsed config: use the defaults
-        const config = (edrys.module.config && typeof edrys.module.config === 'object') ? edrys.module.config : {};
-
-        // btoa() only takes Latin-1, LiaScript decodes the base64 as UTF-8
-        const toBase64 = (text) => btoa(Array.from(new TextEncoder().encode(text), (byte) => String.fromCharCode(byte)).join(''));
-
-        let uri = '';
-        let classroom = config.classroom && edrys.liveUser.room !== 'Lobby';
-
-        if (config.course) {
-          console.log('loading course from URL');
-          uri = config.course;
-        } else {
-          let content;
-          if (config.content) {
-            console.log('loading content from configuration');
-            content = config.content;
-          } else {
-            console.warn('no content defined');
-            content = '# Warning no content defined\n\nSee the documentation for more information.\n\nhttps://github.com/edrys-labs/module-liascript';
-            classroom = false;
-          }
-          uri = `data:text/plain;base64,${toBase64(content)}`;
-        }
-
-        if (classroom) {
-          console.log('loading course in classroom mode');
-          // LiaScript requires the classroom mode: 0 Shared, 1 Summary, 2 Details
-          uri = toBase64(JSON.stringify({'backend':'edrys','course':uri,'room':Edrys.class_id+'/'+Edrys.liveUser.room,'mode':0}));
-        }
-
-        url = `https://liascript.github.io/course/?${uri}`;
-      })"
-    >
-      <iframe
-        :src="url"
-        frameborder="0"
-        style="width: 100%; height: 100%"
-        onload="init(this)"
-        allow="camera; microphone; fullscreen; display-capture;"
-      ></iframe>
-    </template>
 
     <style>
       body,
@@ -138,6 +47,98 @@
       body {
         overflow: hidden;
       }
+
+      iframe {
+        border: 0;
+      }
     </style>
+  </head>
+
+  <body>
+    <iframe
+      id="player"
+      title="LiaScript course"
+      allow="camera; microphone; fullscreen; display-capture;"
+    ></iframe>
+
+    <script>
+      const LIASCRIPT = 'https://liascript.github.io/course/'
+      const LIASCRIPT_ORIGIN = new URL(LIASCRIPT).origin
+
+      const EMPTY_COURSE =
+        '# Warning no content defined\n\nSee the documentation for more information.\n\nhttps://github.com/edrys-labs/module-liascript'
+
+      // btoa() only takes Latin-1, LiaScript decodes the base64 as UTF-8
+      function toBase64(text) {
+        return btoa(
+          Array.from(new TextEncoder().encode(text), (byte) => String.fromCharCode(byte)).join('')
+        )
+      }
+
+      /** The player's query (a course URL, or inline content), wrapped for classroom mode. */
+      function courseQuery(config) {
+        let classroom = config.classroom === true && Edrys.liveUser.room !== 'Lobby'
+        let course = config.course
+
+        if (!course) {
+          if (!config.content) classroom = false
+          course = `data:text/plain;base64,${toBase64(config.content || EMPTY_COURSE)}`
+        }
+
+        if (!classroom) return { query: course, classroom }
+
+        const query = toBase64(
+          JSON.stringify({
+            backend: 'edrys',
+            course,
+            room: `${Edrys.class_id}/${Edrys.liveUser.room}`,
+            // LiaScript requires the classroom mode: 0 Shared, 1 Summary, 2 Details
+            mode: 0,
+          })
+        )
+        return { query, classroom }
+      }
+
+      /**
+       * Classroom mode: LiaScript's Edrys backend sends {subject, body} to this
+       * window; the module answers its 'init' and passes everything else on to
+       * the other peers of the room, and their messages back into the player.
+       */
+      function relay(player) {
+        Edrys.onMessage(({ from, subject, body }) => {
+          if (from !== Edrys.username) {
+            player.contentWindow.postMessage({ subject, body }, LIASCRIPT_ORIGIN)
+          }
+        })
+
+        window.addEventListener('message', (e) => {
+          // edrys-Lite's own events arrive here as well
+          if (e.source !== player.contentWindow || e.origin !== LIASCRIPT_ORIGIN) return
+
+          const { subject, body } = e.data || {}
+          // e.g. LiaScript's own {cmd: 'lia-ready'}
+          if (typeof subject !== 'string') return
+
+          if (subject === 'init') {
+            player.contentWindow.postMessage({ subject, body: true }, LIASCRIPT_ORIGIN)
+          } else {
+            Edrys.sendMessage(subject, body)
+          }
+        })
+      }
+
+      Edrys.onReady(() => {
+        // missing (imported class) or unparsed config: use the defaults
+        const config =
+          Edrys.module.config && typeof Edrys.module.config === 'object' ? Edrys.module.config : {}
+
+        const player = document.getElementById('player')
+        const { query, classroom } = courseQuery(config)
+
+        if (classroom) relay(player)
+
+        player.src = `${LIASCRIPT}?${query}`
+      })
+    </script>
   </body>
 </html>
