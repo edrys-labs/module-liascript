@@ -1,49 +1,85 @@
 # Edrys LiaScript Module
 
-This module allows you to add interactive content and guides to an Edrys class. This includes galleries, audio, quizzes, surveys, code runners, and more. It is based on LiaScript, which allows you to specify all this functionality in simple plaintext, shared over course URLs.
+Add interactive course material to an Edrys class: slides, quizzes, surveys, executable code, galleries,
+formulas, animations and text-to-speech. The module shows a [LiaScript](https://liascript.github.io) course, which
+is plain Markdown, either from a URL or written directly in the module settings. It is shown in every room
+(`show-in: *`), and every role sees the same course.
+
+![A LiaScript course with a quiz in the module](screenshot.png)
 
 ## Usage
 
-Simply use this URL to add the module to your class:
+Add the module to your class with this URL:
 
 ```
 https://edrys-labs.github.io/module-liascript/
 ```
 
-You must specify the following __General settings__. The `course` URL must be a raw LiaScript course URL, and the `content` can be used to specify the course content manually. If you specify the `course` URL, the content will be loaded from and content gets ignored.
+## Configuration
 
-```` yaml
-classroom: false # disable or enable classroom synchronization
-course: https://to your raw LiaScript course URL
-# define the course content manually
-content: |-
-  <!--
-  link:     https://cdn.jsdelivr.net/chartist.js/latest/chartist.min.css
-  script:   https://cdn.jsdelivr.net/chartist.js/latest/chartist.min.js 
-  -->
+Open the module in the class settings. The general tab has these fields:
 
-  # Foo bar
+| Field | Meaning |
+|-------|---------|
+| **course** | URL of a LiaScript course, i.e. its raw Markdown, e.g. `https://raw.githubusercontent.com/<user>/<repo>/main/README.md`. If set, **content** is ignored. |
+| **content** | The course as LiaScript Markdown, written in the settings. Used when **course** is empty. |
+| **classroom** | Classroom mode (off by default), see below. |
+| **player** | The LiaScript player to use. Empty means `https://liascript.github.io/course/`. Set it to use a pinned or self-hosted build. |
 
-  A drawing example, for demonstrating that any JavaScript library can be used,
-  also for drawing.
+Without a course or content, the module says what to set.
 
-  ```javascript
-  // Initialize a Line chart in the container with the ID chart1
-  new Chartist.Line('#chart1', {
-    labels: [1, 2, 3, 4],
-    series: [[100, 120, 180, 200]]
-  });
+The course URL is fetched by LiaScript in each user's browser, so the server has to allow that (CORS). GitHub's
+`raw.githubusercontent.com` URLs work.
 
-  // Initialize a Line chart in the container with the ID chart2 new
-  Chartist.Bar('#chart2', {
-    labels: [1, 2, 3, 4],
-    series: [[5, 2, 8, 3]]
-  });
-  ```
-  <script>@input</script>
+Example `content`, with a quiz and a library loaded by the course:
 
-  <div class="ct-chart ct-golden-section" id="chart1"></div>
-  <div class="ct-chart ct-golden-section" id="chart2"></div>
+````markdown
+<!--
+link:   https://cdn.jsdelivr.net/chartist.js/latest/chartist.min.css
+script: https://cdn.jsdelivr.net/chartist.js/latest/chartist.min.js
+-->
+
+# Ohm's law
+
+What is the voltage across a 100 Ω resistor at 20 mA?
+
+- [( )] 0.2 V
+- [(X)] 2 V
+- [( )] 20 V
+
+```javascript
+new Chartist.Line('#chart', { labels: [1, 2, 3, 4], series: [[100, 120, 180, 200]] })
+```
+<script>@input</script>
+
+<div class="ct-chart ct-golden-section" id="chart"></div>
 ````
 
-The `classroom` is optional, by default it is set to true and in the lobby there is also now classroom synchronization.
+If you edit the class configuration as YAML instead:
+
+```yaml
+config:
+  course: https://raw.githubusercontent.com/<user>/<repo>/main/README.md
+  classroom: true
+```
+
+## Classroom mode
+
+With **classroom** on, the users of a room share one LiaScript classroom: quiz and survey results and a chat.
+It is not used in the Lobby, where everyone has the course on their own.
+
+LiaScript opens its classroom dialog with the backend *Edrys* and the room already filled in. Each user joins
+by clicking **connect** there.
+
+> **Currently not working:** LiaScript's Edrys backend connects but does not send any updates (a bug in
+> LiaScript, `src/typescript/sync/Edrys`). Until it is fixed there, classroom mode shows the course but
+> nothing is shared.
+
+How it works, for module authors: LiaScript sends `{subject, body}` messages to the module. The module answers
+`init` itself, and sends all other messages to the room with `Edrys.sendMessage(subject, body)`. The subject is
+the LiaScript room, `<class id>/<room name>`. Messages from the other users go back into their LiaScript player.
+The module keeps no shared state.
+
+## License
+
+[MIT](LICENSE) © edrys-labs

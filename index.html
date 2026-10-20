@@ -2,71 +2,99 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-
-    <meta
-      name="description"
-      content="A LiaScript module, don't forget to specify course"
-    />
-    <meta name="show-in" content="*" />
-    <meta 
-      name="module-config" 
-      content="{
-        'config': {
-          'classroom': {
-            'type': boolean,
-            'hint': 'Disable or enable classroom synchronization'
-          },
-          'course': {
-            'type': string,
-            'hint': 'Raw LiaScript URL of the course'
-          },
-          'content': {
-            'type': text-area,
-            'hint': 'Define the course content manually'
-          },
-        },
-      }" 
-    />
 
     <title>LiaScript</title>
 
-    <script src="https://edrys-labs.github.io/module/edrys.js"></script>
+    <meta
+      name="description"
+      content="Interactive LiaScript courses (quizzes, surveys, code, animations) from a course URL or Markdown, optionally synced within a room. For more information see <br><a href='https://github.com/edrys-labs/module-liascript' target='_blank'>https://github.com/edrys-labs/module-liascript</a>"
+    />
+    <meta name="show-in" content="*" />
+    <meta
+      name="module-config"
+      content="{
+        'config': {
+          'course': {
+            'type': 'text',
+            'hint': 'URL of a LiaScript course, i.e. its raw Markdown (e.g. https://raw.githubusercontent.com/.../README.md); used instead of content',
+          },
+          'content': {
+            'type': 'code-area',
+            'hint': 'LiaScript Markdown of the course, used when course is empty',
+          },
+          'classroom': {
+            'type': 'boolean',
+            'hint': 'Classroom mode: share quiz and survey results and a chat between the users of a room (not in the Lobby); each user joins with connect in the LiaScript classroom dialog',
+          },
+          'player': {
+            'type': 'text',
+            'hint': 'LiaScript player to use, e.g. a pinned or self-hosted build (default https://liascript.github.io/course/)',
+          }
+        }
+      }"
+    />
 
+    <link rel="stylesheet" href="https://edrys-labs.github.io/module/vendor/water.min.css" />
     <style>
-      body,
+      /* the player fills the module; water.css would centre and pad the body */
       html,
-      iframe {
+      body {
         height: 100%;
-        width: 100%;
+        max-width: none;
         margin: 0;
         padding: 0;
-      }
-
-      body {
         overflow: hidden;
       }
 
+      /* block, so no line box adds a few pixels and a scrollbar below it */
       iframe {
+        display: block;
+        width: 100%;
+        height: 100%;
         border: 0;
       }
+
+      /* the display rule above would otherwise override the hidden attribute */
+      [hidden] {
+        display: none !important;
+      }
+
+      .message {
+        margin: 0;
+        padding: 1rem;
+      }
+
+      /* replaced by the course or a message; appears only after 0.5s, so fast loads don't flicker */
+      .loading {
+        opacity: 0;
+        animation: show-loading 0s 0.5s forwards;
+      }
+
+      @keyframes show-loading {
+        to {
+          opacity: 0.6;
+        }
+      }
     </style>
+
+    <script src="http://localhost:6999/module/edrys.js"></script>
   </head>
 
   <body>
+    <p id="message" class="message loading">Loading LiaScript…</p>
     <iframe
       id="player"
       title="LiaScript course"
       allow="camera; microphone; fullscreen; display-capture;"
+      hidden
     ></iframe>
 
     <script>
-      const LIASCRIPT = 'https://liascript.github.io/course/'
-      const LIASCRIPT_ORIGIN = new URL(LIASCRIPT).origin
+      const DEFAULT_PLAYER = 'https://liascript.github.io/course/'
 
-      const EMPTY_COURSE =
-        '# Warning no content defined\n\nSee the documentation for more information.\n\nhttps://github.com/edrys-labs/module-liascript'
+      // configs that could not be parsed stay strings, missing ones are null or ''
+      const asObject = (config) => (config && typeof config === 'object' ? config : {})
 
       // btoa() only takes Latin-1, LiaScript decodes the base64 as UTF-8
       function toBase64(text) {
@@ -77,13 +105,8 @@
 
       /** The player's query (a course URL, or inline content), wrapped for classroom mode. */
       function courseQuery(config) {
-        let classroom = config.classroom === true && Edrys.liveUser.room !== 'Lobby'
-        let course = config.course
-
-        if (!course) {
-          if (!config.content) classroom = false
-          course = `data:text/plain;base64,${toBase64(config.content || EMPTY_COURSE)}`
-        }
+        const course = config.course || `data:text/plain;base64,${toBase64(config.content)}`
+        const classroom = config.classroom === true && Edrys.liveUser.room !== 'Lobby'
 
         if (!classroom) return { query: course, classroom }
 
@@ -104,40 +127,67 @@
        * window; the module answers its 'init' and passes everything else on to
        * the other peers of the room, and their messages back into the player.
        */
-      function relay(player) {
+      function relay(player, origin) {
         Edrys.onMessage(({ from, subject, body }) => {
           if (from !== Edrys.username) {
-            player.contentWindow.postMessage({ subject, body }, LIASCRIPT_ORIGIN)
+            player.contentWindow.postMessage({ subject, body }, origin)
           }
         })
 
         window.addEventListener('message', (e) => {
           // edrys-Lite's own events arrive here as well
-          if (e.source !== player.contentWindow || e.origin !== LIASCRIPT_ORIGIN) return
+          if (e.source !== player.contentWindow || e.origin !== origin) return
 
           const { subject, body } = e.data || {}
           // e.g. LiaScript's own {cmd: 'lia-ready'}
           if (typeof subject !== 'string') return
 
           if (subject === 'init') {
-            player.contentWindow.postMessage({ subject, body: true }, LIASCRIPT_ORIGIN)
+            player.contentWindow.postMessage({ subject, body: true }, origin)
           } else {
             Edrys.sendMessage(subject, body)
           }
         })
       }
 
-      Edrys.onReady(() => {
-        // missing (imported class) or unparsed config: use the defaults
-        const config =
-          Edrys.module.config && typeof Edrys.module.config === 'object' ? Edrys.module.config : {}
+      function showMessage(text) {
+        const message = document.getElementById('message')
+        message.classList.remove('loading')
+        message.textContent = text
+      }
 
+      Edrys.onReady(() => {
+        const config = asObject(Edrys.module.config)
         const player = document.getElementById('player')
+
+        if (!config.course && !config.content) {
+          showMessage(
+            'No course yet: set course (the URL of a LiaScript course) or content (LiaScript Markdown) in the module settings.'
+          )
+          return
+        }
+
+        let origin
+        try {
+          origin = new URL(config.player || DEFAULT_PLAYER).origin
+        } catch (e) {
+          showMessage(`The player setting is not a URL: ${config.player}. Fix or clear it in the module settings.`)
+          return
+        }
+
         const { query, classroom } = courseQuery(config)
 
-        if (classroom) relay(player)
+        if (classroom) relay(player, origin)
 
-        player.src = `${LIASCRIPT}?${query}`
+        player.addEventListener(
+          'load',
+          () => {
+            document.getElementById('message').hidden = true
+            player.hidden = false
+          },
+          { once: true }
+        )
+        player.src = `${config.player || DEFAULT_PLAYER}?${query}`
       })
     </script>
   </body>
