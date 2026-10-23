@@ -93,24 +93,41 @@
     <script>
       const DEFAULT_PLAYER = 'https://liascript.github.io/course/'
 
+      // the player's server rejects longer request URLs (GitHub Pages: 414 above ~8 KB)
+      const MAX_QUERY = 7000
+
       // configs that could not be parsed stay strings, missing ones are null or ''
       const asObject = (config) => (config && typeof config === 'object' ? config : {})
 
+      const bytesToBase64 = (bytes) => btoa(Array.from(bytes, (byte) => String.fromCharCode(byte)).join(''))
+
       // btoa() only takes Latin-1, LiaScript decodes the base64 as UTF-8
-      function toBase64(text) {
-        return btoa(
-          Array.from(new TextEncoder().encode(text), (byte) => String.fromCharCode(byte)).join('')
-        )
+      const toBase64 = (text) => bytesToBase64(new TextEncoder().encode(text))
+
+      async function gzipBase64(text) {
+        const stream = new Blob([text]).stream().pipeThrough(new CompressionStream('gzip'))
+        return bytesToBase64(new Uint8Array(await new Response(stream).arrayBuffer()))
       }
 
-      /** The player's query (a course URL, or inline content), wrapped for classroom mode. */
-      function courseQuery(config) {
-        const course = config.course || `data:text/plain;base64,${toBase64(config.content)}`
-        const classroom = config.classroom === true
+      /** A short ID of the content (cyrb53), so LiaScript keeps state per course text. */
+      function contentId(text) {
+        let h1 = 0xdeadbeef
+        let h2 = 0x41c6ce57
+        for (let i = 0; i < text.length; i++) {
+          const c = text.charCodeAt(i)
+          h1 = Math.imul(h1 ^ c, 2654435761)
+          h2 = Math.imul(h2 ^ c, 1597334677)
+        }
+        h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909)
+        h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909)
+        return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(16)
+      }
 
-        if (!classroom) return { query: course, classroom }
+      /** The player's query for a course address, wrapped for classroom mode. */
+      function wrap(course, classroom) {
+        if (!classroom) return course
 
-        const query = toBase64(
+        return toBase64(
           JSON.stringify({
             backend: 'edrys',
             course,
@@ -119,7 +136,35 @@
             mode: 0,
           })
         )
-        return { query, classroom }
+      }
+
+      /**
+       * The player's query. Inline content goes into the URL while it fits, gzipped if needed;
+       * larger content is asked for by LiaScript (`parent:<id>`, see supplyContent).
+       */
+      async function courseQuery(config, classroom) {
+        if (config.course) return { query: wrap(config.course, classroom) }
+
+        const plain = wrap(`data:text/plain;base64,${toBase64(config.content)}`, classroom)
+        if (plain.length <= MAX_QUERY) return { query: plain }
+
+        const gzip = wrap(`data:text/plain;gzip;base64,${await gzipBase64(config.content)}`, classroom)
+        if (gzip.length <= MAX_QUERY) return { query: gzip }
+
+        const uri = `parent:${contentId(config.content)}`
+        return { query: wrap(uri, classroom), uri }
+      }
+
+      /** Answer LiaScript's request for a `parent:` course with the configured content. */
+      function supplyContent(player, origin, uri, content) {
+        window.addEventListener('message', (e) => {
+          if (e.source !== player.contentWindow || e.origin !== origin) return
+
+          const { cmd, param } = e.data || {}
+          if (cmd === 'lia-course' && param?.uri === uri) {
+            player.contentWindow.postMessage({ cmd, param: { uri, ok: true, body: content } }, origin)
+          }
+        })
       }
 
       /**
@@ -156,7 +201,7 @@
         message.textContent = text
       }
 
-      Edrys.onReady(() => {
+      Edrys.onReady(async () => {
         const config = asObject(Edrys.module.config)
         const player = document.getElementById('player')
 
@@ -175,8 +220,10 @@
           return
         }
 
-        const { query, classroom } = courseQuery(config)
+        const classroom = config.classroom === true
+        const { query, uri } = await courseQuery(config, classroom)
 
+        if (uri) supplyContent(player, origin, uri, config.content)
         if (classroom) relay(player, origin)
 
         player.addEventListener(
