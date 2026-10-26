@@ -72,10 +72,6 @@ who move to another room join that room's classroom there.
 LiaScript opens its classroom dialog with the backend *Edrys* and the room already filled in. Each user joins
 by clicking **connect** there.
 
-> **Currently not working with the hosted player:** its Edrys backend connects but does not send any updates
-> (a bug in LiaScript, `src/typescript/sync/Edrys`). Until the fix is released, classroom mode shows the course
-> but nothing is shared. A LiaScript build with the fix can be used through the **player** setting.
-
 How it works, for module authors: LiaScript sends `{subject, body}` messages to the module. The module answers
 `init` itself, and sends all other messages to the room with `Edrys.sendMessage(subject, body)`. LiaScript
 chooses the subject (an ID of the course and room), and the body is a base64 Yjs frame. Messages from the
