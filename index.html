@@ -36,6 +36,9 @@
     />
 
     <link rel="stylesheet" href="https://edrys-labs.github.io/module/vendor/water.min.css" />
+    <!-- colours and fonts of the messages in the classroom's light or dark
+         theme; the course follows LiaScript's own setting -->
+    <link rel="stylesheet" href="https://edrys-labs.github.io/module/edrys-module.css" />
     <style>
       /* the player fills the module; water.css would centre and pad the body */
       html,
@@ -62,7 +65,8 @@
 
       .message {
         margin: 0;
-        padding: 1rem;
+        padding: 16px 18px;
+        color: var(--edrys-muted);
       }
 
       /* replaced by the course or a message; appears only after 0.5s, so fast loads don't flicker */
@@ -73,7 +77,7 @@
 
       @keyframes show-loading {
         to {
-          opacity: 0.6;
+          opacity: 1;
         }
       }
     </style>

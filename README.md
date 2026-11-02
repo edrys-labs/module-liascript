@@ -28,6 +28,9 @@ Open the module in the class settings. The general tab has these fields:
 
 Without a course or content, the module says what to set.
 
+The module's messages follow the classroom's light or dark theme. The course itself uses LiaScript's own light or
+dark setting (in LiaScript's settings menu), which each user's browser remembers for all LiaScript courses.
+
 The course URL is fetched by LiaScript in each user's browser, so the server has to allow that (CORS). GitHub's
 `raw.githubusercontent.com` URLs work.
 
